@@ -1,0 +1,23 @@
+# Notificacao dos alertas no Telegram (opcional).
+# Para ativar: preencha TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID no obs-stack/.env,
+# renomeie este arquivo para telegram.yaml e reinicie o Grafana.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: telegram
+    receivers:
+      - uid: telegram-tamoai
+        type: telegram
+        settings:
+          bottoken: $TELEGRAM_BOT_TOKEN
+          chatid: $TELEGRAM_CHAT_ID
+        disableResolveMessage: false
+
+policies:
+  - orgId: 1
+    receiver: telegram
+    group_by: [grafana_folder, alertname]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h

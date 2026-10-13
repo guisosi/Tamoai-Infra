@@ -1,6 +1,9 @@
 # 🏰 Trabalho-Infra_devops — Infraestrutura `tamoai.tech`
 
-> Infraestrutura self-hosted em VPS único que serve a aplicação **tamoai.tech**: borda com TLS automático e WAF, observabilidade completa (métricas + logs) e monitoramento de disponibilidade. Tudo em Docker Compose, orquestrado em três projetos que se comunicam por redes dedicadas.
+> Infraestrutura de produção num único servidor para a aplicação **tamoai.tech**: TLS automático com
+> certificado wildcard, WAF/IPS com bloqueio na borda, métricas, logs com geolocalização, alertas e
+> página de status. Tudo como código em Docker Compose — inclusive dashboards, datasources e regras
+> de alerta do Grafana — organizado em três projetos que se comunicam por redes dedicadas.
 
 ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
 ![Caddy](https://img.shields.io/badge/Caddy-1F88C0?logo=caddy&logoColor=white)
@@ -24,9 +27,17 @@
 | Aplicação (site + backend) | [limadev27/DevOps-Computa-o-em-Nuvem](https://github.com/limadev27/DevOps-Computa-o-em-Nuvem) |
 | Infraestrutura (este repo) | [guisosi/Trabalho-Infra_devops](https://github.com/guisosi/Trabalho-Infra_devops) |
 | Hospedagem | VPS único (Linux + Docker) |
-| Integrantes | [@guisosi](https://github.com/guisosi) · [@limadev27](https://github.com/limadev27) |
 
-<!-- Curso / Professor: preencher se o trabalho exigir -->
+### Autoria
+
+- **Infraestrutura (todo este repositório): [@guisosi](https://github.com/guisosi)** — arquitetura,
+  Caddy com TLS/DNS-01, CrowdSec (detecção e bloqueio), observabilidade (Prometheus, Grafana,
+  Loki/Promtail com GeoIP), alertas, Uptime Kuma, redes e hardening.
+- Aplicação (site e backend, publicados como imagens no GHCR):
+  [@limadev27](https://github.com/limadev27/DevOps-Computa-o-em-Nuvem).
+
+Projeto desenvolvido para a disciplina **DevOps e Computação em Nuvem** do curso de **Ciência da
+Computação** (3º semestre), apresentado em **2026** e mantido em produção desde então.
 
 ---
 
@@ -43,7 +54,8 @@
 9. [Disponibilidade: Uptime Kuma](#9-disponibilidade-uptime-kuma)
 10. [Variáveis de ambiente](#10-variáveis-de-ambiente)
 11. [Como subir](#11-como-subir)
-12. [Limitações e próximos passos](#12-limitações-e-próximos-passos)
+12. [Decisões de projeto](#12-decisões-de-projeto)
+13. [Limitações e próximos passos](#13-limitações-e-próximos-passos)
 
 ---
 
@@ -114,6 +126,27 @@ CrowdSec antes de rotear para o destino (site, Grafana, Prometheus ou Uptime Kum
 os logs do Caddy alimentam o CrowdSec (que bloqueia ataques) e o Loki (via Promtail, com GeoIP),
 enquanto o Prometheus coleta métricas de todos os componentes.
 
+### Telas
+
+**Mapa de acessos** — logs do Caddy no Loki, enriquecidos com GeoIP pelo Promtail:
+
+![Mapa de acessos com GeoIP](docs/img/mapa-acessos.png)
+
+![Tráfego HTTP e desempenho](docs/img/http-desempenho.png)
+
+**CrowdSec** — decisões de bloqueio, parsing dos logs e cenários disparados:
+
+![Dashboard do CrowdSec](docs/img/crowdsec.png)
+
+<details>
+<summary><b>Containers (cAdvisor) e host (Node Exporter)</b></summary>
+
+![Containers via cAdvisor](docs/img/containers-cadvisor.png)
+
+![Host via Node Exporter](docs/img/host-node-exporter.png)
+
+</details>
+
 ---
 
 ## 3. Tecnologias
@@ -148,7 +181,12 @@ enquanto o Prometheus coleta métricas de todos os componentes.
 ├── obs-stack/                    # observabilidade + segurança
 │   ├── docker-compose.yml        # crowdsec, prometheus, grafana, loki, promtail, node-exporter, cadvisor
 │   ├── prometheus.yml            # alvos de scrape
-│   ├── grafana-datasources.yaml  # datasource do Grafana
+│   ├── grafana/
+│   │   ├── dashboards/           # dashboards em JSON (cAdvisor, CrowdSec, Node Exporter, mapa de acessos)
+│   │   └── provisioning/
+│   │       ├── datasources/      # Prometheus e Loki
+│   │       ├── dashboards/       # carrega os JSON de grafana/dashboards
+│   │       └── alerting/         # regras de alerta (+ notificação Telegram opcional)
 │   ├── loki-config.yaml          # config do Loki
 │   ├── promtail-config.yaml      # coleta de logs + GeoIP
 │   └── acquis.yaml               # fontes de log do CrowdSec
@@ -161,7 +199,8 @@ enquanto o Prometheus coleta métricas de todos os componentes.
 ```
 
 > Os arquivos `.env`, chaves privadas, certificados e as pastas `data/` **não** estão versionados
-> (ver `.gitignore`). Só as configurações entram no repositório.
+> (ver `.gitignore`). Só as configurações entram no repositório. Cada projeto com segredos tem um
+> `.env.example` com os nomes das variáveis e os valores vazios.
 
 ---
 
@@ -169,11 +208,11 @@ enquanto o Prometheus coleta métricas de todos os componentes.
 
 A integração entre projetos separados é feita por **três redes Docker**:
 
-| Rede | Tipo | Quem usa | Para quê |
+| Rede (no compose → nome no Docker) | Tipo | Quem usa | Para quê |
 |---|---|---|---|
-| `castelo_web` | interna | site, backend, caddy, uptime-kuma | Tráfego da aplicação; sem acesso externo |
-| `castelo_edge` | bridge | caddy, uptime-kuma | Camada de borda |
-| `obs` | externa | caddy, crowdsec, prometheus, grafana, loki… | Liga o Caddy à stack de observabilidade |
+| `web` → `castelo_web` | interna | site, backend, caddy, uptime-kuma | Tráfego da aplicação; sem acesso externo |
+| `edge` → `castelo_edge` | bridge | caddy, uptime-kuma | Camada de borda |
+| `obs` → `obs` | externa | caddy, crowdsec, prometheus, grafana, loki… | Liga o Caddy à stack de observabilidade |
 
 A rede `obs` é declarada como **externa** nos dois lados, com nome fixo. É isso que permite o
 Caddy (do projeto `castelo`) falar com o Grafana e o Prometheus (do projeto `obs-stack`) e o
@@ -236,9 +275,34 @@ definida no próprio `Caddyfile` — não são expostos à internet aberta, mesm
 | `cadvisor` | `cadvisor:8080` | Métricas por container |
 | `crowdsec` | `crowdsec:6060` | Métricas do WAF |
 
-**Dashboards (Grafana)** — datasource do Prometheus provisionado automaticamente
-(`grafana-datasources.yaml`), painel ECharts (volkovlabs) pré-instalado, acesso só por
-`metrics.tamoai.tech`.
+**Grafana como código** — tudo o que o Grafana usa vem de arquivos versionados em
+`obs-stack/grafana/`, carregados no start pelo *provisioning*:
+
+| O quê | Arquivo | Conteúdo |
+|---|---|---|
+| Datasources | `provisioning/datasources/datasources.yaml` | Prometheus (padrão) e Loki, com UIDs fixos |
+| Dashboards | `dashboards/*.json` | cAdvisor (containers), Node Exporter Full (host), CrowdSec (detecções e bloqueios), mapa de calor dos acessos (Loki + GeoIP) |
+| Alertas | `provisioning/alerting/regras.yaml` | 5 regras, descritas abaixo |
+
+Os dashboards ficam **somente leitura** na interface: mudanças são feitas no JSON e entram por
+deploy, como qualquer outro código. O painel ECharts (volkovlabs) é instalado no start e o acesso é
+só por `metrics.tamoai.tech`.
+
+**Alertas (Grafana Alerting)** — avaliados a cada minuto sobre as métricas do Prometheus:
+
+| Regra | Condição | Severidade |
+|---|---|---|
+| Alvo do Prometheus fora do ar | `up < 1` por 2 min | crítica |
+| Container parado | menos containers rodando que o esperado (11) por 3 min | crítica |
+| Disco raiz com pouco espaço | menos de 15% livre em `/` por 10 min | aviso |
+| Memória disponível baixa | menos de 10% disponível por 10 min | aviso |
+| Pico de detecções do CrowdSec | mais de 30 cenários disparados em 15 min | aviso |
+
+![Regras de alerta provisionadas](docs/img/alertas.png)
+
+A notificação no Telegram está pronta em `provisioning/alerting/telegram.yaml.desativado`: basta
+preencher `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` no `.env` e renomear o arquivo para `.yaml`.
+Sem ela, os alertas aparecem na tela *Alerting* do Grafana.
 
 **Logs (Loki + Promtail)** — o Promtail descobre todos os containers pelo socket do Docker e
 envia o `stdout`/`stderr` deles para o Loki (`http://loki:3100`). Os logs de acesso do Caddy
@@ -254,6 +318,11 @@ O **Uptime Kuma** (`louislam/uptime-kuma:1`) monitora a disponibilidade dos serv
 página de status em `uptime.tamoai.tech` (atrás da allowlist de IP). Dados persistidos no volume
 `kuma-data`. Participa das redes `web` e `edge` para alcançar os alvos internos e ser servido
 pelo Caddy.
+
+Os monitores ficam agrupados: o grupo **Nimbus** só aparece como ligado quando o site público
+(HTTPS, de fora para dentro) e o backend (pela rede interna) respondem.
+
+![Uptime Kuma](docs/img/uptime-kuma.png)
 
 ---
 
@@ -276,10 +345,10 @@ suas variáveis; o Compose aborta se alguma faltar (`${VAR:?defina no .env}`).
 | Variável | Para quê |
 |---|---|
 | `GRAFANA_PASSWORD` | Senha do admin do Grafana |
-| `CROWDSEC_API_KEY` | Chave da API do CrowdSec |
-| `HOSTINGER_API_TOKEN` | Token DNS (se usado por serviços da stack) |
+| `TELEGRAM_BOT_TOKEN` | *(opcional)* Bot do Telegram para os alertas |
+| `TELEGRAM_CHAT_ID` | *(opcional)* Chat que recebe os alertas |
 
-> Crie um `*.env.example` com as chaves vazias para documentar o que preencher sem expor valores.
+Os modelos estão em `castelo/.env.example` e `obs-stack/.env.example`.
 
 ---
 
@@ -289,6 +358,10 @@ suas variáveis; o Compose aborta se alguma faltar (`${VAR:?defina no .env}`).
 para o IP do VPS; arquivos `.env` preenchidos em `castelo/` e `obs-stack/`.
 
 ```bash
+# 0. preencher os segredos a partir dos modelos
+cp castelo/.env.example castelo/.env && cp obs-stack/.env.example obs-stack/.env
+# (edite os dois .env)
+
 # 1. criar a rede compartilhada de observabilidade (uma vez)
 docker network create obs
 
@@ -311,7 +384,21 @@ curl -I https://tamoai.tech
 
 ---
 
-## 12. Limitações e próximos passos
+## 12. Decisões de projeto
+
+| Decisão | Por quê |
+|---|---|
+| **Caddy** como borda | TLS automático sem cron nem certbot, configuração curta, e o bouncer do CrowdSec e o provedor DNS entram como plugins compilados na própria imagem (`Dockerfile.caddy`). |
+| **Wildcard via DNS-01** | Um único certificado cobre os subdomínios administrativos, que não precisam ser alcançáveis pela internet para validar o certificado. |
+| **CrowdSec** com bouncer na borda | Detecção por cenários nos logs do Caddy e bloqueio no próprio proxy, antes de o request chegar à aplicação; também recebe a blocklist da comunidade. |
+| **Três projetos Compose** ligados por rede externa | Borda, observabilidade e status sobem e caem de forma independente: atualizar o Grafana não derruba o site. |
+| **Rede da aplicação interna** | Site e backend não têm rota de saída para a internet; só o Caddy fala com eles. |
+| **Grafana provisionado por arquivo** | O ambiente de observabilidade é reproduzível a partir do repositório e toda mudança passa por versionamento. |
+| **VPS único** | Escopo e custo de um projeto acadêmico; a alta disponibilidade fica declarada como limitação. |
+
+---
+
+## 13. Limitações e próximos passos
 
 Pontos conhecidos, declarados abertamente:
 
@@ -321,19 +408,19 @@ Pontos conhecidos, declarados abertamente:
   granular por volume Docker (`grafana_data`, `prometheus_data`, `loki_data`, `kuma-data`, dados
   do CrowdSec) — restaurar um serviço isolado hoje exige recuperar o servidor inteiro a partir do
   snapshot.
-- **Grafana configurado pela interface, não como código.** O datasource do Loki e os dashboards
-  foram criados direto na UI (persistem no volume `grafana_data` e no backup do host) e funcionam
-  normalmente. Só o datasource do Prometheus está provisionado por arquivo
-  (`grafana-datasources.yaml`). Provisionar também o Loki e exportar os dashboards para JSON
-  versionado deixaria o Grafana reproduzível do zero a partir do repositório.
+- **Limite de containers fixo no alerta.** A regra "Container parado" compara com o total esperado
+  (11); ao adicionar ou remover serviços, o número precisa ser atualizado em `regras.yaml`.
 - **Segredos em `.env` texto puro.** Fora do git (correto), mas sem cofre (Vault/SOPS) — melhoria
   futura para rotação e auditoria.
 - **CI/CD mora no repo da aplicação.** Este repositório é de *deploy*; o build e o push das
   imagens acontecem no [repo do app](https://github.com/limadev27/DevOps-Computa-o-em-Nuvem).
 
-**Próximos passos sugeridos:** provisionar o Loki e os dashboards como código (IaC), adicionar
-backup granular por volume (complementando o snapshot do host), e configurar alertas (Alertmanager
-ou alertas nativos do Grafana) sobre as métricas já coletadas.
+**Já feito depois da apresentação:** datasources, dashboards e alertas do Grafana passaram a ser
+provisionados como código, e os `.env.example` documentam os segredos de cada projeto.
+
+**Próximos passos:** backup granular por volume (complementando o snapshot do host), ativar a
+notificação dos alertas no Telegram e um workflow de CI que valide os arquivos Compose e YAML a cada
+push.
 
 ---
 

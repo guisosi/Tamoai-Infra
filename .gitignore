@@ -4,6 +4,7 @@
 # segredos
 **/.env
 **/.env.*
+!**/.env.example
 **/*.key
 **/*.pem
 

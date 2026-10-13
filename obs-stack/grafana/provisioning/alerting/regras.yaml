@@ -1,0 +1,145 @@
+# Regras de alerta do Grafana provisionadas como codigo.
+# Consultas instantaneas no Prometheus (A) + limite (C). Ajuste os limites conforme o uso real.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: infraestrutura
+    folder: Alertas
+    interval: 1m
+    rules:
+      - uid: alvo-prometheus-fora
+        title: Alvo do Prometheus fora do ar
+        condition: C
+        for: 2m
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model: { refId: A, expr: up, instant: true }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        labels: { severidade: critica }
+        annotations:
+          summary: "Coleta de métricas parada"
+          description: "O Prometheus não consegue coletar {{ $labels.job }} ({{ $labels.instance }}) há mais de 2 minutos."
+
+      - uid: containers-faltando
+        title: Container parado
+        condition: C
+        for: 3m
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model: { refId: A, expr: 'count(container_last_seen{name!=""})', instant: true }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                # 11 containers no ar hoje; atualize ao adicionar ou remover servicos
+                - evaluator: { type: lt, params: [11] }
+        noDataState: Alerting
+        execErrState: Error
+        labels: { severidade: critica }
+        annotations:
+          summary: "Containers em execução abaixo do esperado"
+          description: "Há {{ printf \"%.0f\" $values.A.Value }} containers rodando; o esperado são 11. Veja docker ps no servidor."
+
+      - uid: disco-cheio
+        title: Disco raiz com pouco espaço
+        condition: C
+        for: 10m
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              refId: A
+              expr: 'node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} * 100'
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [15] }
+        noDataState: NoData
+        execErrState: Error
+        labels: { severidade: aviso }
+        annotations:
+          summary: "Disco / com menos de 15% livre"
+          description: "Espaço livre em /: {{ printf \"%.1f\" $values.A.Value }}%."
+
+      - uid: memoria-baixa
+        title: Memória disponível baixa
+        condition: C
+        for: 10m
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              refId: A
+              expr: 'node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100'
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [10] }
+        noDataState: NoData
+        execErrState: Error
+        labels: { severidade: aviso }
+        annotations:
+          summary: "Memória disponível abaixo de 10%"
+          description: "Memória disponível: {{ printf \"%.1f\" $values.A.Value }}%."
+
+  - orgId: 1
+    name: seguranca
+    folder: Alertas
+    interval: 1m
+    rules:
+      - uid: crowdsec-pico-deteccoes
+        title: Pico de detecções do CrowdSec
+        condition: C
+        for: 0s
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              refId: A
+              expr: 'sum(increase(cs_bucket_overflowed_total[15m]))'
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                # cenarios disparados em 15 min; ajuste depois de observar o normal do site
+                - evaluator: { type: gt, params: [30] }
+        noDataState: OK
+        execErrState: Error
+        labels: { severidade: aviso }
+        annotations:
+          summary: "Muitas detecções do CrowdSec em 15 minutos"
+          description: "{{ printf \"%.0f\" $values.A.Value }} cenários disparados nos últimos 15 minutos. Veja o dashboard CrowdSec."

@@ -58,9 +58,14 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
       - GF_SERVER_ROOT_URL=https://metrics.tamoai.tech
       - GF_PLUGINS_PREINSTALL_SYNC=volkovlabs-echarts-panel
+      # usados so se o grafana/provisioning/alerting/telegram.yaml estiver ativo
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/ds.yaml:ro
+      # datasources, dashboards e alertas como codigo
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
     # SEM porta no host: acesso só pelo Caddy (com allowlist de IP)
     networks: [obs]
 
