@@ -1,4 +1,4 @@
-# 🏰 Trabalho-Infra_devops — Infraestrutura `tamoai.tech`
+# 🏰 Tamoai-Infra — Infraestrutura `tamoai.tech`
 
 > Infraestrutura de produção num único servidor para a aplicação **tamoai.tech**: TLS automático com
 > certificado wildcard, WAF/IPS com bloqueio na borda, métricas, logs com geolocalização, alertas e
@@ -25,7 +25,7 @@
 | Métricas / dashboards | https://metrics.tamoai.tech *(acesso restrito por IP)* |
 | Prometheus | https://prometheus.tamoai.tech *(acesso restrito por IP)* |
 | Aplicação (site + backend) | [limadev27/DevOps-Computa-o-em-Nuvem](https://github.com/limadev27/DevOps-Computa-o-em-Nuvem) |
-| Infraestrutura (este repo) | [guisosi/Trabalho-Infra_devops](https://github.com/guisosi/Trabalho-Infra_devops) |
+| Infraestrutura (este repo) | [guisosi/Tamoai-Infra](https://github.com/guisosi/Tamoai-Infra) |
 | Hospedagem | VPS único (Linux + Docker) |
 
 ### Autoria
